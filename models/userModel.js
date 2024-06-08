@@ -13,6 +13,11 @@ const userSchema = mongoose.Schema({
     password:{
         type:String,
         required:true
+    },
+    is_loggedin:{
+        type:Boolean,
+        required:false,
+        default:false,
     }
 });
 

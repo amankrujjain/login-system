@@ -3,15 +3,23 @@ const asyncHandler = require('express-async-handler');
 const User = require('../models/userModel');
 
 const secure = asyncHandler(async (req, res, next) => {
-    let token;
-    if (req.cookies && req.cookies.jwt) {
+
+    if (req.cookies && req.cookies.refreshToken && req.cookies.accessToken) {
         try {
-            token = req.cookies.jwt;
-            console.log("Token----->", req.user)
-            const decoded = jwt.verify(token, process.env.JWT_SECRET);
-            console.log("Decoded----->", req.user)
-            req.user = await User.findById(decoded.id).select('-password');
-            console.log("Auth----->", req.user)
+            const refreshToken = req.cookies.refreshToken;
+            const accessToken = req.cookies.accessToken;
+
+            const decodedRefreshToken = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+            const decodedAccessToken = jwt.verify(accessToken, process.env.JWT_SECRET);
+
+            if (decodedRefreshToken.id !== decodedAccessToken.id) {
+                return res.status(401).json({ message: 'Token IDs do not match' });
+            }
+
+            req.user = await User.findById(decodedRefreshToken.id).select('-password');
+            if (!req.user) {
+                return res.status(401).json({ message: 'Not authorized, user not found' });
+            }
             next();
         } catch (error) {
             res.status(401).json({ message: 'Not authorized, token failed' });
