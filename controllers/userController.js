@@ -1,3 +1,4 @@
+// Import necessary libraries and modules
 const jwt = require('jsonwebtoken');
 const asyncHandler = require('express-async-handler');
 const User = require('../models/userModel');
@@ -5,14 +6,22 @@ const { generateAccessToken, generateRefreshToken } = require('../utils/generate
 const bcrypt = require('bcrypt');
 const { body, validationResult } = require('express-validator');
 
+/**
+ * Middleware array for user registration.
+ * Includes input validation and registration handler.
+ */
 const register = [
+    // Validation for username, email, and password fields
     body('username').isString().trim().escape().withMessage('Name must be a string'),
     body('email').isEmail().normalizeEmail().withMessage("Invalid email format"),
     body('password')
         .isLength({ min: 6 })
         .matches(/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/)
         .withMessage('Password must be at least 6 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one special character'),
+    
+    // Registration handler
     asyncHandler(async (req, res) => {
+        // Validate request inputs
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
             return res.status(400).json({ errors: errors.array() });
@@ -21,21 +30,24 @@ const register = [
         const { username, email, password } = req.body;
 
         try {
+            // Check if user already exists
             const userExists = await User.findOne({ email });
-
             if (userExists) {
                 return res.status(400).json({ message: 'User already exists' });
             }
 
+            // Hash the password
             const salt = await bcrypt.genSalt(10);
             const hashedPassword = await bcrypt.hash(password, salt);
 
+            // Create new user
             const user = await User.create({
                 username,
                 email,
                 password: hashedPassword
             });
 
+            // Send response with user data
             if (user) {
                 res.status(201).json({
                     id: user._id,
@@ -52,10 +64,18 @@ const register = [
     })
 ];
 
+/**
+ * Middleware array for user authentication.
+ * Includes input validation and authentication handler.
+ */
 const authUser = [
+    // Validation for email and password fields
     body('email').isEmail().normalizeEmail(),
     body('password').trim().escape(),
+    
+    // Authentication handler
     asyncHandler(async (req, res) => {
+        // Validate request inputs
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
             return res.status(400).json({ errors: errors.array() });
@@ -64,29 +84,33 @@ const authUser = [
         const { email, password } = req.body;
 
         try {
+            // Find user by email
             const user = await User.findOne({ email });
 
             if (!user) {
                 return res.status(401).json({ message: 'Invalid email or password' });
             }
 
+            // Check if user is already logged in
             if (user.is_loggedin) {
                 return res.status(409).json({ message: 'User already logged in' });
             }
 
+            // Compare provided password with stored password
             const passwordMatch = await bcrypt.compare(password, user.password);
-
             if (!passwordMatch) {
                 return res.status(401).json({ message: 'Invalid email or password' });
             }
 
+            // Generate tokens
             const accessToken = generateAccessToken({ id: user._id });
             const refreshToken = generateRefreshToken({ id: user._id });
 
-            // Update the is_loggedin field to true
+            // Update user's login status
             user.is_loggedin = true;
             await user.save();
 
+            // Set cookies and send response
             res.cookie('accessToken', accessToken, {
                 httpOnly: true,
                 secure: process.env.NODE_ENV === 'production',
@@ -113,8 +137,12 @@ const authUser = [
     })
 ];
 
+/**
+ * Handler to get the user profile.
+ */
 const getUserProfile = asyncHandler(async (req, res) => {
     try {
+        // Find user by ID from request object
         const user = await User.findById(req.user._id);
         if (user) {
             res.json({
@@ -131,6 +159,9 @@ const getUserProfile = asyncHandler(async (req, res) => {
     }
 });
 
+/**
+ * Handler to refresh the access token using a refresh token.
+ */
 const refreshToken = asyncHandler(async (req, res) => {
     const refreshToken = req.cookies.refreshToken;
     if (!refreshToken) {
@@ -151,6 +182,9 @@ const refreshToken = asyncHandler(async (req, res) => {
     }
 });
 
+/**
+ * Handler to logout the user.
+ */
 const logoutUser = asyncHandler(async (req, res) => {
     try {
         const refreshToken = req.cookies.refreshToken;
@@ -168,7 +202,6 @@ const logoutUser = asyncHandler(async (req, res) => {
         }
 
         const user = await User.findById(decoded.id);
-
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
         }
@@ -177,11 +210,11 @@ const logoutUser = asyncHandler(async (req, res) => {
             return res.status(409).json({ message: 'User already logged out' });
         }
 
-        // Update the is_loggedin flag to false
+        // Update user's login status
         user.is_loggedin = false;
         await user.save();
 
-        // Clear the refresh token and access token cookies
+        // Clear cookies and send response
         res.cookie('refreshToken', '', {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
@@ -200,4 +233,5 @@ const logoutUser = asyncHandler(async (req, res) => {
     }
 });
 
+// Export the functions for use in other parts of the application
 module.exports = { register, authUser, getUserProfile, refreshToken, logoutUser };
